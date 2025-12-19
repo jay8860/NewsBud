@@ -32,9 +32,17 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     
 # Constants
-DETECTION_MODEL_NAME = "gemini-1.5-flash"
-ANALYSIS_MODEL_NAME = "gemini-1.5-flash" # Can trigger to pro if needed, but flash is good for text analysis too. Let's use flash for speed/cost unless quality is poor.
+DETECTION_MODEL_NAME = "gemini-1.5-flash-001"
+ANALYSIS_MODEL_NAME = "gemini-1.5-flash-001"
 MAX_THUMBNAIL_PAGES = 12
+
+# List available models for debugging
+try:
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            print(f"Available model: {m.name}")
+except Exception as e:
+    print(f"Could not list models: {e}")
 
 def render_thumbnails(pdf_path: str, max_pages: int = 12) -> List[Image.Image]:
     """Generates low-res thumbnails for the first few pages of a PDF."""
