@@ -89,12 +89,24 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please send a PDF file.")
         return
 
-    status_msg = await update.message.reply_text("Processing PDF... (Uploading to Brain)")
+    # Check file size (Telegram Bot API limit is ~20MB for downloads)
+    file_size_mb = update.message.document.file_size / (1024 * 1024)
+    if file_size_mb > 20:
+        await update.message.reply_text(
+            f"⚠️ **File too large.**\n"
+            f"Expected: < 20 MB\n"
+            f"Received: {file_size_mb:.2f} MB\n\n"
+            "Telegram Bots cannot download files larger than 20MB. Please compress the PDF and try again.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    status_msg = await update.message.reply_text(f"Processing {file_size_mb:.2f} MB file... (Uploading to Brain)")
     
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Download file
-            logger.info(f"Downloading file: {update.message.document.file_id}")
+            logger.info(f"Downloading file: {update.message.document.file_id} ({file_size_mb:.2f} MB)")
             file = await context.bot.get_file(update.message.document.file_id)
             pdf_path = os.path.join(temp_dir, "newspaper.pdf")
             await file.download_to_drive(pdf_path)
@@ -116,16 +128,16 @@ def main():
         print("Error: TELEGRAM_BOT_TOKEN and GEMINI_API_KEY must be set in .env file.")
         return
 
-    # Increase timeout for large file downloads
+    # Increase timeout for large file downloads (300s)
     from telegram.request import HTTPXRequest
-    request = HTTPXRequest(connection_pool_size=8, read_timeout=120, write_timeout=120, connect_timeout=60)
+    request = HTTPXRequest(connection_pool_size=8, read_timeout=300, write_timeout=300, connect_timeout=60)
 
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).request(request).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.Document.PDF, handle_document))
 
-    print(f"Bot is running with {MODEL_NAME}...")
+    print(f"Bot v2.1 is running with {MODEL_NAME}...")
     application.run_polling()
 
 if __name__ == '__main__':
