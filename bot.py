@@ -116,7 +116,11 @@ def main():
         print("Error: TELEGRAM_BOT_TOKEN and GEMINI_API_KEY must be set in .env file.")
         return
 
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    # Increase timeout for large file downloads
+    from telegram.request import HTTPXRequest
+    request = HTTPXRequest(connection_pool_size=8, read_timeout=120, write_timeout=120, connect_timeout=60)
+
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).request(request).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.Document.PDF, handle_document))
