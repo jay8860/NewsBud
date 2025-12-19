@@ -129,49 +129,61 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = await update.message.reply_text("Processing PDF... generating thumbnails.")
     
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Download file
-        file = await context.bot.get_file(update.message.document.file_id)
-        pdf_path = os.path.join(temp_dir, "newspaper.pdf")
-        await file.download_to_drive(pdf_path)
-        
-        # Step 1: Dynamic Detection
-        thumbnails = render_thumbnails(pdf_path)
-        await status_msg.edit_text("Scanning for editorial pages...")
-        
-        detected_pages = await detect_editorial_pages(thumbnails)
-        
-        if not detected_pages:
-            await status_msg.edit_text(
-                "Could not automatically locate editorials. Please reply with the page numbers manually using the /pages command.\n"
-                "Example: `/pages 6 7`",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            # Store pdf_path in user_data is difficult across distinct updates due to temp dir cleanup.
-            # Ideally we'd persist the file. For simplicity in this script, we'll ask user to re-upload or implement a file persistence if needed.
-            # But the requirement says "reply with page numbers". 
-            # To support "reply", we need to keep the file. 
-            # Let's move the file to a persistent temp location renamed by file_id to handle the fallback.
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download file
+            logger.info(f"Downloading file: {update.message.document.file_id}")
+            file = await context.bot.get_file(update.message.document.file_id)
+            pdf_path = os.path.join(temp_dir, "newspaper.pdf")
+            await file.download_to_drive(pdf_path)
+            logger.info("Download complete.")
             
-            persist_dir = os.path.join(tempfile.gettempdir(), "editorial_bot_files")
-            os.makedirs(persist_dir, exist_ok=True)
-            persist_path = os.path.join(persist_dir, f"{update.message.document.file_id}.pdf")
-            import shutil
-            shutil.copy(pdf_path, persist_path)
-            
-            context.user_data['last_pdf_path'] = persist_path
-            return
+            # Step 1: Dynamic Detection
+            logger.info("Generating thumbnails...")
+            # Run blocking image generation in a separate thread
+            loop = asyncio.get_running_loop()
+            thumbnails = await loop.run_in_executor(None, render_thumbnails, pdf_path)
+            logger.info(f"Thumbnails generated: {len(thumbnails)}")
 
-        await status_msg.edit_text(f"Found editorials on pages {detected_pages}. Analyzing...")
-        
-        # Step 2: High-Res Extraction
-        high_res_images = render_high_res(pdf_path, detected_pages)
-        
-        # Step 3: Analytical Summarization
-        summary = await analyze_pages(high_res_images)
-        
-        await status_msg.edit_text("Here is your Decision-Maker’s Brief:")
-        await update.message.reply_text(summary, parse_mode=ParseMode.MARKDOWN)
+            await status_msg.edit_text("Scanning for editorial pages (sending to Gemini)...")
+            
+            detected_pages = await detect_editorial_pages(thumbnails)
+            logger.info(f"Detected pages: {detected_pages}")
+            
+            if not detected_pages:
+                await status_msg.edit_text(
+                    "Could not automatically locate editorials. Please reply with the page numbers manually using the /pages command.\n"
+                    "Example: `/pages 6 7`",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # Persist file for fallback
+                persist_dir = os.path.join(tempfile.gettempdir(), "editorial_bot_files")
+                os.makedirs(persist_dir, exist_ok=True)
+                persist_path = os.path.join(persist_dir, f"{update.message.document.file_id}.pdf")
+                import shutil
+                shutil.copy(pdf_path, persist_path)
+                
+                context.user_data['last_pdf_path'] = persist_path
+                return
+
+            await status_msg.edit_text(f"Found editorials on pages {detected_pages}. Analyzing...")
+            
+            # Step 2: High-Res Extraction
+            logger.info("Generating high-res images...")
+            high_res_images = await loop.run_in_executor(None, render_high_res, pdf_path, detected_pages)
+            
+            # Step 3: Analytical Summarization
+            logger.info("Analyzing content...")
+            summary = await analyze_pages(high_res_images)
+            
+            await status_msg.edit_text("Here is your Decision-Maker’s Brief:")
+            await update.message.reply_text(summary, parse_mode=ParseMode.MARKDOWN)
+            logger.info("Process complete.")
+
+    except Exception as e:
+        logger.error(f"Error processing PDF: {e}", exc_info=True)
+        await status_msg.edit_text(f"An error occurred: {str(e)}")
 
 async def pages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
