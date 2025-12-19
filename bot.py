@@ -32,8 +32,8 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     
 # Constants
-DETECTION_MODEL_NAME = "gemini-1.5-flash-001"
-ANALYSIS_MODEL_NAME = "gemini-1.5-flash-001"
+DETECTION_MODEL_NAME = "gemini-2.0-flash"
+ANALYSIS_MODEL_NAME = "gemini-2.0-flash"
 MAX_THUMBNAIL_PAGES = 12
 
 # List available models for debugging
