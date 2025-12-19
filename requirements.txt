@@ -1,5 +1,3 @@
 python-telegram-bot>=21.0
 google-generativeai
-pymupdf
-Pillow
 python-dotenv
